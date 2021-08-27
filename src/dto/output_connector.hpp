@@ -52,13 +52,35 @@ namespace dd
       };
       DTO_FIELD(Boolean, image) = false;
 
-      /* ncnn */
-      DTO_FIELD(Int32, blank_label) = -1;
+      /* output unsupervised predict */
+      DTO_FIELD_INFO(binarized)
+      {
+        info->description
+            = "Output values are binarized and set either to 0.0 or 1.0";
+      }
+      DTO_FIELD(Boolean, binarized) = false;
+
+      DTO_FIELD_INFO(bool_binarized)
+      {
+        info->description = "Output values as a bool vector";
+      }
+      DTO_FIELD(Boolean, bool_binarized) = false;
+
+      DTO_FIELD_INFO(string_binarized)
+      {
+        info->description = "Output values as a string, eg 0001101...";
+      }
+      DTO_FIELD(Boolean, string_binarized) = false;
+
+      /* simsearch (unsupervised) */
       DTO_FIELD(Boolean, index) = false;
       DTO_FIELD(Boolean, build_index) = false;
       DTO_FIELD(Boolean, search) = false;
       DTO_FIELD(Int32, search_nn);
       DTO_FIELD(Int32, nprobe);
+
+      /* ncnn */
+      DTO_FIELD(Int32, blank_label) = -1;
 
       /* TRT */
       DTO_FIELD(Boolean, regression) = false;

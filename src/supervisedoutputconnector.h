@@ -399,7 +399,17 @@ namespace dd
     void finalize(const APIData &ad_in, APIData &ad_out, MLModel *mlm)
     {
       auto output_params = ad_in.createSharedDTO<DTO::OutputConnector>();
+      finalize(output_params, ad_out, mlm);
+    }
 
+    /**
+     * \brief finalize output supervised connector data
+     * @param ad_in data output object from the API call
+     * @param ad_out data object as the call response
+     */
+    void finalize(oatpp::Object<DTO::OutputConnector> output_params,
+                  APIData &ad_out, MLModel *mlm)
+    {
 #ifndef USE_SIMSEARCH
       (void)mlm;
 #endif
