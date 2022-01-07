@@ -386,6 +386,17 @@ namespace dd
     int read_file(const std::string &fname, int test_id)
     {
       (void)test_id;
+      cv::MatAllocator *allocator = cv::Mat::getDefaultAllocator();
+#ifdef USE_CUDA_CV
+      if (_cuda)
+        {
+          allocator = cv::cuda::HostMem::getAllocator(
+              cv::cuda::HostMem::AllocType::PAGE_LOCKED);
+        }
+#endif
+      // XXX: absolutely not thread safe!!! and does not reset the allocator
+      // afterwards
+      cv::Mat::setDefaultAllocator(allocator);
       cv::Mat img
           = cv::imread(fname, _unchanged_data ? CV_LOAD_IMAGE_UNCHANGED
                                               : (_bw ? CV_LOAD_IMAGE_GRAYSCALE
