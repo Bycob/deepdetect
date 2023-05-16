@@ -93,6 +93,9 @@ if (NOT EXISTS ${CMAKE_BINARY_DIR}/src)
 	COMMAND  bash -c "mkdir ${CMAKE_BINARY_DIR}/src")
 endif()
 
+# TODO autodetect platform
+set(APPLE_M1 ON)
+
 if (USE_OPENMP)
    if (APPLE_M1)
       set(FOPENMP "-Xclang -fopenmp")
@@ -794,7 +797,7 @@ if (USE_TORCH)
     ${PYTORCH_PATCHES_PATH}/pytorch_15_compile.patch
     ${PYTORCH_PATCHES_PATH}/pytorch_113_new_logger.patch
     ${PYTORCH_PATCHES_PATH}/pytorch_19_use_new_logger.patch
-    ${PYTORCH_PATCHES_PATH}/pytorch_apple.patch
+    ${PYTORCH_PATCHES_PATH}/pytorch_113_apple_includes.patch
   )
 
   message(STATUS "Configuring libtorch")
@@ -804,26 +807,51 @@ if (USE_TORCH)
     set(PYTORCH_COMMIT v2.0.0)
     set(PYTORCH_COMPLETE ${CMAKE_BINARY_DIR}/CMakeFiles/pytorch-complete)
 
-    if(USE_TORCH_CPU_ONLY)
-      set(PYTORCH_USE_CUDA 0)
-    else()
-      set(PYTORCH_USE_CUDA 1)
-    endif()
+    if (APPLE_M1)
+      if(USE_TORCH_CPU_ONLY)
+        set(PYTORCH_USE_MPS 0)
+      else()
+        set(PYTORCH_USE_MPS 1)
+      endif()
+      message(STATUS "in apple branch")
 
-    ExternalProject_Add(
-      pytorch
-      PREFIX pytorch
-      GIT_REPOSITORY https://github.com/pytorch/pytorch.git
-      GIT_TAG ${PYTORCH_COMMIT}
-      GIT_CONFIG advice.detachedHead=false
-      UPDATE_DISCONNECTED 1
-      PATCH_COMMAND "" test -f ${PYTORCH_COMPLETE} && echo Skipping || git apply ${PYTORCH_PATCHES} && echo Applying ${PYTORCH_PATCHES}
-      CONFIGURE_COMMAND "" cd ${CMAKE_BINARY_DIR}/pytorch/src/pytorch/third_party/fmt/ && git checkout 7.1.0
-      BUILD_COMMAND ""
-      COMMAND test -f ${PYTORCH_COMPLETE} && echo Skipping || ${CMAKE_COMMAND} -E env PATH=${PROTOBUF_LIB_DIR}:$ENV{PATH} BUILD_CUSTOM_PROTOBUF=0 GLIBCXX_USE_CXX11_ABI=1 BUILD_TEST=0 USE_CUDA=${PYTORCH_USE_CUDA}  BUILD_CAFFE2=1 BUILD_CAFFE2_OPS=1 BUILD_CAFFE2_MOBILE=0 USE_DDLOG=1 USE_TENSORRT=0 CAFFE2_LINK_LOCAL_PROTOBUF=0 "CMAKE_CXX_FLAGS=-isystem ${SPDLOG_INCLUDE_DIR} -isystem ${PROTOBUF_INCLUDE_DIR}" "CMAKE_CUDA_FLAGS=-isystem ${SPDLOG_INCLUDE_DIR} -isystem ${PROTOBUF_INCLUDE_DIR}  ${CUDA_ARCH}" CMAKE_PREFIX_PATH=${PROTOBUF_LIB_DIR}/cmake MAX_JOBS=8 python3 ../pytorch/tools/build_libtorch.py
-      INSTALL_COMMAND ""
-      DEPENDS spdlog protobuf
-    )
+      ExternalProject_Add(
+        pytorch
+        PREFIX pytorch
+        GIT_REPOSITORY https://github.com/pytorch/pytorch.git
+        GIT_TAG ${PYTORCH_COMMIT}
+        GIT_CONFIG advice.detachedHead=false
+        UPDATE_DISCONNECTED 1
+        PATCH_COMMAND "" test -f ${PYTORCH_COMPLETE} && echo Skipping || git apply ${PYTORCH_PATCHES} && echo Applying ${PYTORCH_PATCHES}
+        CONFIGURE_COMMAND "" cd ${CMAKE_BINARY_DIR}/pytorch/src/pytorch/third_party/fmt/ && git checkout 7.1.0
+        BUILD_COMMAND ""
+        COMMAND test -f ${PYTORCH_COMPLETE} && echo Skipping || ${CMAKE_COMMAND} -E env PATH=${PROTOBUF_LIB_DIR}:$ENV{PATH} BUILD_CUSTOM_PROTOBUF=0 BUILD_TEST=0 USE_MPS=${PYTORCH_USE_MPS} USE_DDLOG=1 USE_TENSORRT=0 "CMAKE_CXX_FLAGS=-isystem ${SPDLOG_INCLUDE_DIR} -isystem ${PROTOBUF_INCLUDE_DIR}" "CMAKE_CUDA_FLAGS=-isystem ${SPDLOG_INCLUDE_DIR} -isystem ${PROTOBUF_INCLUDE_DIR}" CMAKE_PREFIX_PATH=${PROTOBUF_LIB_DIR}/cmake MAX_JOBS=8 python3 ../pytorch/tools/build_libtorch.py
+        INSTALL_COMMAND ""
+        DEPENDS spdlog protobuf
+      )
+    else()
+      if(USE_TORCH_CPU_ONLY)
+        set(PYTORCH_USE_CUDA 0)
+      else()
+        set(PYTORCH_USE_CUDA 1)
+      endif()
+      message(STATUS "in normal branch")
+
+      ExternalProject_Add(
+        pytorch
+        PREFIX pytorch
+        GIT_REPOSITORY https://github.com/pytorch/pytorch.git
+        GIT_TAG ${PYTORCH_COMMIT}
+        GIT_CONFIG advice.detachedHead=false
+        UPDATE_DISCONNECTED 1
+        PATCH_COMMAND "" test -f ${PYTORCH_COMPLETE} && echo Skipping || git apply ${PYTORCH_PATCHES} && echo Applying ${PYTORCH_PATCHES}
+        CONFIGURE_COMMAND "" cd ${CMAKE_BINARY_DIR}/pytorch/src/pytorch/third_party/fmt/ && git checkout 7.1.0
+        BUILD_COMMAND ""
+        COMMAND test -f ${PYTORCH_COMPLETE} && echo Skipping || ${CMAKE_COMMAND} -E env PATH=${PROTOBUF_LIB_DIR}:$ENV{PATH} BUILD_CUSTOM_PROTOBUF=0 GLIBCXX_USE_CXX11_ABI=1 BUILD_TEST=0 USE_CUDA=${PYTORCH_USE_CUDA} BUILD_CAFFE2=1 BUILD_CAFFE2_OPS=1 BUILD_CAFFE2_MOBILE=0 USE_DDLOG=1 USE_TENSORRT=0 CAFFE2_LINK_LOCAL_PROTOBUF=0 "CMAKE_CXX_FLAGS=-isystem ${SPDLOG_INCLUDE_DIR} -isystem ${PROTOBUF_INCLUDE_DIR}" "CMAKE_CUDA_FLAGS=-isystem ${SPDLOG_INCLUDE_DIR} -isystem ${PROTOBUF_INCLUDE_DIR}  ${CUDA_ARCH}" CMAKE_PREFIX_PATH=${PROTOBUF_LIB_DIR}/cmake MAX_JOBS=8 python3 ../pytorch/tools/build_libtorch.py
+        INSTALL_COMMAND ""
+        DEPENDS spdlog protobuf
+      )
+    endif()
 
     set(TORCH_LOCATION ${CMAKE_BINARY_DIR}/pytorch/src/pytorch/torch)
   endif()
