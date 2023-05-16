@@ -23,6 +23,7 @@ option(USE_FAISS "use FAISS as indexer" ON)
 option(BUILD_SPDLOG "build SPDLOG instead of using system library" ON)
 option(BUILD_PROTOBUF "build PROTOBUF instead of using system library" ON)
 option(USE_BOOST_BACKTRACE "use boost backtrace" ON)
+option(USE_OPENMP "use OpenMP" ON)
 
 if (USE_CAFFE)
   add_definitions(-DUSE_CAFFE)
@@ -92,7 +93,16 @@ if (NOT EXISTS ${CMAKE_BINARY_DIR}/src)
 	COMMAND  bash -c "mkdir ${CMAKE_BINARY_DIR}/src")
 endif()
 
-set(CMAKE_CXX_FLAGS "-g -O2 -Wall -Wextra -fopenmp -fPIC -std=c++14 -Wl,--no-as-needed -ltcmalloc_minimal")
+if (USE_OPENMP)
+   if (APPLE_M1)
+      set(FOPENMP "-Xclang -fopenmp")
+   else()
+	set(FOPENMP "-fopenmp")
+   endif()
+else()
+   set(FOPENMP "")
+endif()
+set(CMAKE_CXX_FLAGS "-g -O2 -Wall -Wextra ${FOPENMP} -fPIC -std=c++14 -Wl,--no-as-needed -ltcmalloc_minimal")
 set(CMAKE_CXX_STANDARD 14)
 add_definitions("-DUSE_OPENCV" "-DUSE_LMDB")
 
@@ -149,7 +159,13 @@ if (BUILD_PROTOBUF)
     set(PROTOBUF_INCLUDE_DIR ${CMAKE_BINARY_DIR}/protobuf/src/protobuf/src)
     set(PROTOBUF_LIB_DIR ${CMAKE_BINARY_DIR}/protobuf/src/protobuf-build/)
     set(PROTOBUF_PROTOC ${PROTOBUF_LIB_DIR}/protoc)
-    set(PROTOBUF_LIB_DEPS ${PROTOBUF_LIB_DIR}/libprotobuf.so ${PROTOBUF_LIB_DIR}/libprotoc.so ${PROTOBUF_LIB_DIR}/libprotobuf-lite.so)
+
+    if (APPLE_M1)
+      set(PROTOBUF_LIB_DEPS ${PROTOBUF_LIB_DIR}/libprotobuf.dylib ${PROTOBUF_LIB_DIR}/libprotoc.dylib ${PROTOBUF_LIB_DIR}/libprotobuf-lite.dylib)
+    else()
+      set(PROTOBUF_LIB_DEPS ${PROTOBUF_LIB_DIR}/libprotobuf.so ${PROTOBUF_LIB_DIR}/libprotoc.so ${PROTOBUF_LIB_DIR}/libprotobuf-lite.so)
+    endif()
+
     link_directories(${PROTOBUF_LIB_DIR})
     include_directories(SYSTEM ${PROTOBUF_INCLUDE_DIR})
 else()
@@ -234,12 +250,11 @@ if (USE_HDF5)
 endif()
 
 # dependency on Boost
+find_package(Boost 1.54 REQUIRED COMPONENTS filesystem thread system iostreams)
 if (USE_BOOST_BACKTRACE)
     add_definitions(-DUSE_BOOST_BACKTRACE)
-    find_package(Boost 1.54 REQUIRED COMPONENTS filesystem thread system iostreams stacktrace_backtrace)
+    find_package(Boost 1.54 REQUIRED COMPONENTS stacktrace_backtrace)
     string(APPEND CMAKE_CXX_FLAGS " -DBOOST_STACKTRACE_USE_BACKTRACE -DBOOST_STACKTRACE_LINK")
-else()
-    find_package(Boost 1.54 REQUIRED COMPONENTS filesystem thread system iostreams)
 endif()
 
 
@@ -375,7 +390,6 @@ if (CUDA_FOUND)
   endif()
 else()
   set(CUDA_LIB_DEPS "")
-  add_definitions(-DCPU_ONLY)
 endif()
 
 if (USE_DLIB)
@@ -479,6 +493,12 @@ if (USE_CAFFE2)
     -DBUILD_BINARY=OFF
     -DBUILD_DOCS=OFF
   )
+
+  if (APPLE_M1)
+    list(APPEND PYTORCH_FLAGS
+      -DUSE_MPS=ON
+    )
+  endif()
 
   # Only a few submodules are currently used by caffe2
   # (No need to log, benchmark, compile for IOS, make python libraries, ...)
@@ -774,6 +794,7 @@ if (USE_TORCH)
     ${PYTORCH_PATCHES_PATH}/pytorch_15_compile.patch
     ${PYTORCH_PATCHES_PATH}/pytorch_113_new_logger.patch
     ${PYTORCH_PATCHES_PATH}/pytorch_19_use_new_logger.patch
+    ${PYTORCH_PATCHES_PATH}/pytorch_apple.patch
   )
 
   message(STATUS "Configuring libtorch")
@@ -1121,6 +1142,13 @@ if (USE_HTTP_SERVER)
 endif()
 
 # main library, main & tests
+if (APPLE_M1)
+   include_directories("/opt/homebrew/include/")
+   include_directories("/opt/homebrew/opt/libarchive/include/")
+   include_directories("/opt/homebrew/include/eigen3")
+   include_directories("/opt/homebrew/include/utf8cpp/")
+endif()
+
 include_directories("${PROJECT_SOURCE_DIR}/src")
 # add the binary tree to the search path for include files
 # so that we will find dd_config.h
@@ -1145,6 +1173,10 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/backends/dlib
     ${CMAKE_SOURCE_DIR}/backends/tsne
 )
+# mapbox
+# TODO clean
+message("Variant library is at ${Variant_DIR}")
+include_directories(${Variant_DIR}/include/)
 
 add_subdirectory(src)
 
@@ -1185,8 +1217,9 @@ set(COMMON_LINK_DIRS
     ${TORCH_LIB_DIR}
 )
 
+# XXX is conditionning omp on USE_OPENMP needed here?
 set(COMMON_LINK_LIBS
-    ddetect ${DLIB_LIB_DEPS} ${TENSORRT_LIBS} ${CUDA_LIB_DEPS} glog gflags ${OpenCV_LIBS} curlpp curl ${Boost_LIBRARIES} archive
+    ddetect ${DLIB_LIB_DEPS} ${TENSORRT_LIBS} ${CUDA_LIB_DEPS} gflags ${OpenCV_LIBS} curlpp curl ${Boost_LIBRARIES} archive omp
     ${PROTOBUF_LIB_DEPS}
     ${HTTP_LIB_DEPS}
     ${SPDLOG_LIB_DEPS}
@@ -1238,7 +1271,6 @@ endif()
 file(GLOB_RECURSE ALL_SOURCE_FILES src/*.cpp src/*.hpp src/*.h src/*.c tests/*.cc src/*.cc)
 list(FILTER ALL_SOURCE_FILES EXCLUDE REGEX "^${CMAKE_SOURCE_DIR}/src/ext/.*$")
 
-
 find_program(CLANG_FORMAT_BIN clang-format-10 clang-format)
 add_custom_target(
         clang-format
@@ -1278,6 +1310,7 @@ message(STATUS "USE_COMMAND_LINE:      ${USE_COMMAND_LINE}")
 message(STATUS "USE_JSON_API:          ${USE_JSON_API}")
 message(STATUS "USE_HTTP_SERVER:       ${USE_HTTP_SERVER}")
 message(STATUS "USE_HTTP_SERVER_OATPP: ${USE_HTTP_SERVER_OATPP}")
+message(STATUS "USE_CPU_ONLY:          ${USE_CPU_ONLY}")
 message(STATUS "BUILD_SPDLOG:          ${BUILD_SPDLOG}")
 message(STATUS "BUILD_PROTOBUF:        ${BUILD_PROTOBUF}")
 message(STATUS "BUILD_TESTS:           ${BUILD_TESTS}")
@@ -1306,5 +1339,6 @@ message(STATUS "USE_XGBOOST:           ${USE_XGBOOST}")
 message(STATUS "USE_XGBOOST_CPU_ONLY:  ${USE_XGBOOST_CPU_ONLY}")
 message(STATUS "USE_TSNE:              ${USE_TSNE}")
 message(STATUS "USE_BOOST_BACKTRACE:   ${USE_BOOST_BACKTRACE}")
+message(STATUS "USE_OPENMP:            ${USE_OPENMP}")
 message(STATUS "USE_CUDA_CV:           ${USE_CUDA_CV}")
 message(STATUS "OPENCV_VERSION:        ${OPENCV_VERSION}")

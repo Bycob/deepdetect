@@ -100,9 +100,6 @@ namespace dd
           return &type;
         }
       };
-
-      template class DTOVectorClass<double>;
-      template class DTOVectorClass<bool>;
     }
 
     // ==== Serialization methods
