@@ -22,10 +22,6 @@
 
 #include "torchlib.h"
 
-#if !defined(CPU_ONLY)
-#include <c10/cuda/CUDACachingAllocator.h>
-#endif
-
 #include "outputconnectorstrategy.h"
 
 #include "generators/net_caffe.h"
@@ -554,7 +550,7 @@ namespace dd
           {
             if (meas_out.has(m))
               {
-                cur_meas = meas_out.get(m).get<double>();
+                cur_meas = meas_out.get(m).template get<double>();
                 meas = m;
                 break;
               }

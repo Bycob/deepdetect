@@ -22,7 +22,7 @@
 #ifndef TORCH_UTILS_H
 #define TORCH_UTILS_H
 
-#if !defined(CPU_ONLY)
+#if !defined(CPU_ONLY) && !defined(USE_MPS)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #include <c10/cuda/CUDACachingAllocator.h>
@@ -62,7 +62,7 @@ namespace dd
      */
     inline void empty_cuda_cache()
     {
-#if !defined(CPU_ONLY)
+#if !defined(CPU_ONLY) && !defined(USE_MPS)
       c10::cuda::CUDACachingAllocator::emptyCache();
 #endif
     }

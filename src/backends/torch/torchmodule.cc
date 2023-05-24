@@ -215,9 +215,9 @@ namespace dd
       }
     if (_graph)
       {
-        std::vector<long int> dims = inputc._dataset.datasize(0);
+        std::vector<int64_t> dims = inputc._dataset.datasize(0);
         std::string d;
-        for (long int di : dims)
+        for (int64_t di : dims)
           d += std::to_string(di) + " ";
         _logger->info("input data dimensions : " + d);
         dims.insert(dims.begin(), 1); // dummy batch size
