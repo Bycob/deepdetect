@@ -93,26 +93,31 @@ if (NOT EXISTS ${CMAKE_BINARY_DIR}/src)
 	COMMAND  bash -c "mkdir ${CMAKE_BINARY_DIR}/src")
 endif()
 
-# TODO autodetect platform
-set(APPLE_M1 ON)
-
 if (USE_OPENMP)
-   if (APPLE_M1)
-      set(FOPENMP "-Xclang -fopenmp")
-      # TODO detect openmp location
-      include_directories("/opt/homebrew/Cellar//libomp/16.0.3/include/")
-      link_directories("/opt/homebrew/Cellar/libomp/16.0.3/lib/")
-   else()
-	set(FOPENMP "-fopenmp")
-   endif()
+  if (APPLE)
+    set(FOPENMP "-Xclang -fopenmp")
+    find_library(OPENMP_LIBRARIES REQUIRED
+      NAMES omp libomp
+      HINTS /opt/homebrew/Cellar/libomp/*/lib/)
+
+    message(STATUS "OpenMP location: ${OPENMP_LIBRARIES}")
+    find_path(OPENMP_INCLUDE_DIRS REQUIRED
+      NAMES omp.h
+      HINTS /opt/homebrew/Cellar/libomp/*/include/)
+    message(STATUS "OpenMP header ${OPENMP_INCLUDE_DIRS}")
+    include_directories(SYSTEM ${OPENMP_INCLUDE_DIRS})
+  else()
+    set(FOPENMP "-fopenmp")
+    set(OPENMP_LIBRARIES omp)
+  endif()
 else()
-   set(FOPENMP "")
+  set(FOPENMP "")
 endif()
-if (APPLE_M1)
+
+if (APPLE)
     set(CMAKE_CXX_FLAGS "-g -O2 -Wall -Wextra ${FOPENMP} -fPIC -std=c++14")
-    add_definitions("-DUSE_MPS")
 else()
-    set(CMAKE_CXX_FLAGS "-g -O2 -Wextra ${FOPENMP} -fPIC -std=c++14 -Wl,--no-as-needed -ltcmalloc_minimal")
+    set(CMAKE_CXX_FLAGS "-g -O2 -Wall -Wextra ${FOPENMP} -fPIC -std=c++14 -Wl,--no-as-needed -ltcmalloc_minimal")
 endif()
 
 set(CMAKE_CXX_STANDARD 14)
@@ -172,7 +177,7 @@ if (BUILD_PROTOBUF)
     set(PROTOBUF_LIB_DIR ${CMAKE_BINARY_DIR}/protobuf/src/protobuf-build/)
     set(PROTOBUF_PROTOC ${PROTOBUF_LIB_DIR}/protoc)
 
-    if (APPLE_M1)
+    if (APPLE)
       set(PROTOBUF_LIB_DEPS ${PROTOBUF_LIB_DIR}/libprotobuf.dylib ${PROTOBUF_LIB_DIR}/libprotoc.dylib ${PROTOBUF_LIB_DIR}/libprotobuf-lite.dylib)
     else()
       set(PROTOBUF_LIB_DEPS ${PROTOBUF_LIB_DIR}/libprotobuf.so ${PROTOBUF_LIB_DIR}/libprotoc.so ${PROTOBUF_LIB_DIR}/libprotobuf-lite.so)
@@ -302,7 +307,7 @@ else()
 endif()
 
 # CUDA validation
-if (NOT CUDA_FOUND)
+if (NOT APPLE AND NOT CUDA_FOUND)
   if (USE_TENSORRT)
       message(FATAL, "USE_TENSORRT=ON needs CUDA installed")
   endif()
@@ -505,12 +510,6 @@ if (USE_CAFFE2)
     -DBUILD_BINARY=OFF
     -DBUILD_DOCS=OFF
   )
-
-  if (APPLE_M1)
-    list(APPEND PYTORCH_FLAGS
-      -DUSE_MPS=ON
-    )
-  endif()
 
   # Only a few submodules are currently used by caffe2
   # (No need to log, benchmark, compile for IOS, make python libraries, ...)
@@ -797,8 +796,7 @@ endif()
 
 # Torch
 if (USE_TORCH)
-
-  if (!APPLE_M1)
+  if (!APPLE)
     set(CMAKE_EXE_LINKER_FLAGS "-Wl,--no-as-needed")
   endif()
 
@@ -808,8 +806,10 @@ if (USE_TORCH)
     ${PYTORCH_PATCHES_PATH}/pytorch_15_compile.patch
     ${PYTORCH_PATCHES_PATH}/pytorch_113_new_logger.patch
     ${PYTORCH_PATCHES_PATH}/pytorch_19_use_new_logger.patch
-    ${PYTORCH_PATCHES_PATH}/pytorch_113_apple_includes.patch
   )
+  if (APPLE)
+    list(APPEND PYTORCH_PATCHES ${PYTORCH_PATCHES_PATH}/pytorch_113_apple_includes.patch)
+  endif()
 
   message(STATUS "Configuring libtorch")
   add_definitions(-DUSE_TORCH)
@@ -818,13 +818,13 @@ if (USE_TORCH)
     set(PYTORCH_COMMIT v2.0.1)
     set(PYTORCH_COMPLETE ${CMAKE_BINARY_DIR}/CMakeFiles/pytorch-complete)
 
-    if (APPLE_M1)
+    if (APPLE)
       if(USE_TORCH_CPU_ONLY)
         set(PYTORCH_USE_MPS 0)
       else()
         set(PYTORCH_USE_MPS 1)
+        add_definitions("-DUSE_MPS")
       endif()
-      message(STATUS "in apple branch")
 
       message(STATUS "PROTOBUF_PROTOC_EXECUTABLE=${PROTOBUF_PROTOC} PROTOBUF_INCLUDE_DIRS=${PROTOBUF_INCLUDE_DIR} PROTOBUF_LIBRARIES=${PROTOBUF_LIB_DEPS}")
       ExternalProject_Add(
@@ -848,7 +848,6 @@ if (USE_TORCH)
       else()
         set(PYTORCH_USE_CUDA 1)
       endif()
-      message(STATUS "in normal branch")
 
       ExternalProject_Add(
         pytorch
@@ -868,7 +867,7 @@ if (USE_TORCH)
     set(TORCH_LOCATION ${CMAKE_BINARY_DIR}/pytorch/src/pytorch/torch)
   endif()
 
-  if (APPLE_M1)
+  if (APPLE)
     set(TORCH_LIB_DEPS ${TORCH_BINARY_LOCATION}/lib/libtorch.dylib ${TORCH_BINARY_LOCATION}/lib/libtorch_cpu.dylib ${TORCH_BINARY_LOCATION}/lib/libc10.dylib ${TORCH_BINARY_LOCATION}/lib/libtorch_global_deps.dylib -llmdb)
   else()
     set(TORCH_LIB_DEPS ${TORCH_LOCATION}/lib/libtorch.so ${TORCH_LOCATION}/lib/libtorch_cpu.so ${TORCH_LOCATION}/lib/libc10.so -llmdb)
@@ -1186,7 +1185,7 @@ if (USE_HTTP_SERVER)
 endif()
 
 # main library, main & tests
-if (APPLE_M1)
+if (APPLE)
    include_directories("/opt/homebrew/include/")
    include_directories("/opt/homebrew/opt/libarchive/include/")
    include_directories("/opt/homebrew/include/eigen3")
@@ -1226,6 +1225,7 @@ add_subdirectory(src)
 
 set(COMMON_INCLUDE_DIRS
     ${Boost_INCLUDE_DIRS}
+    ${OPENMP_INCLUDE_DIRS}
     ${OATPP_INCLUDE_DIRS}
     ${HTTP_INCLUDE_DIR}
     ${PROTOBUF_INCLUDE_DIR}
@@ -1261,9 +1261,8 @@ set(COMMON_LINK_DIRS
     ${TORCH_LIB_DIR}
 )
 
-# XXX is conditionning omp on USE_OPENMP needed here?
 set(COMMON_LINK_LIBS
-    ddetect ${DLIB_LIB_DEPS} ${TENSORRT_LIBS} ${CUDA_LIB_DEPS} gflags ${OpenCV_LIBS} curlpp curl ${Boost_LIBRARIES} archive omp
+    ddetect ${DLIB_LIB_DEPS} ${TENSORRT_LIBS} ${CUDA_LIB_DEPS} gflags ${OpenCV_LIBS} curlpp curl ${Boost_LIBRARIES} archive ${OPENMP_LIBRARIES}
     ${PROTOBUF_LIB_DEPS}
     ${HTTP_LIB_DEPS}
     ${SPDLOG_LIB_DEPS}
