@@ -44,6 +44,7 @@ static std::string not_found_str
 
 static std::string incept_repo = "../examples/torch/resnet50_torch/";
 static std::string detect_repo = "../examples/torch/fasterrcnn_torch/";
+static std::string traced_yolox_repo = "../examples/torch/traced_yolox_torch/";
 static std::string seg_repo = "../examples/torch/deeplabv3_torch/";
 // static std::string detect_train_repo_fasterrcnn
 //= "../examples/torch/fasterrcnn_train_torch";
@@ -393,6 +394,48 @@ TEST(torchapi, service_predict_object_detection)
   auto &preds_best = jd["body"]["predictions"][0]["classes"];
   ASSERT_EQ(preds_best.Size(), 3);
 }
+
+#ifndef CPU_ONLY
+TEST(torchapi, service_predict_object_detection_traced) {
+  JsonAPI japi;
+  std::string sname = "traced_yolox";
+  std::string jstr
+      = "{\"mllib\":\"torch\",\"description\":\"traced yolox\",\"type\":"
+        "\"supervised\",\"model\":{\"repository\":\""
+        + traced_yolox_repo
+        + "\"},\"parameters\":{\"input\":{\"connector\":\"image\",\"height\":"
+          "224,\"width\":224,\"rgb\":true},\"mllib\":{"
+          "\"gpu\":true,\"template\":\"yolox\"}}}";
+
+  std::string joutstr = japi.jrender(japi.service_create(sname, jstr));
+  ASSERT_EQ(created_str, joutstr);
+  std::string jpredictstr = "{\"service\":\"traced_yolox\",\"parameters\":{"
+                            "\"input\":{\"height\":224,"
+                            "\"width\":224},\"output\":{\"bbox\":true, "
+                            "\"confidence_threshold\":0.8}},\"data\":[\""
+                            + detect_repo + "cat.jpg\"]}";
+
+  joutstr = japi.jrender(japi.service_predict(jpredictstr));
+  JDoc jd;
+  std::cout << "joutstr=" << joutstr << std::endl;
+  jd.Parse<rapidjson::kParseNanAndInfFlag>(joutstr.c_str());
+  ASSERT_TRUE(!jd.HasParseError());
+  ASSERT_EQ(200, jd["status"]["code"]);
+  ASSERT_TRUE(jd["body"]["predictions"].IsArray());
+
+  auto &preds = jd["body"]["predictions"][0]["classes"];
+  std::string cl1 = preds[0]["cat"].GetString();
+  ASSERT_TRUE(cl1 == "cat");
+  ASSERT_TRUE(preds[0]["prob"].GetDouble() > 0.9);
+  auto &bbox = preds[0]["bbox"];
+  // cat is approximately in bottom left corner of the image.
+  ASSERT_TRUE(bbox["xmin"].GetDouble() < 100 && bbox["xmax"].GetDouble() > 300
+              && bbox["ymin"].GetDouble() < 100
+              && bbox["ymax"].GetDouble() > 300);
+  // Check confidence threshold
+  ASSERT_TRUE(preds[preds.Size() - 1]["prob"].GetDouble() >= 0.8);
+}
+#endif
 
 TEST(torchapi, service_predict_segmentation)
 {

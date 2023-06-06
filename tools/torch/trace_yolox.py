@@ -49,6 +49,7 @@ General usage (examples):
     )
     parser.add_argument("--gpu", type=int, help="GPU id to run on GPU")
     parser.add_argument("--to_onnx", action="store_true", help="Export model to onnx")
+    parser.add_argument("--trace", action="store_true", help="Trace yolox instead of JIT. Model will only be usable in inference mode.")
     parser.add_argument(
         "--use_wrapper",
         action="store_true",
@@ -85,8 +86,15 @@ General usage (examples):
         logging.basicConfig(level=logging.INFO)
 
     device = "cpu"
-    if args.gpu:
-        device = "cuda:%d" % args.gpu
+    if args.gpu is not None:
+        if torch.cuda.is_available():
+            device = "cuda:%d" % args.gpu
+        elif torch.backends.mps.is_available():
+            device = "mps"
+        else:
+            raise RuntimeError("GPU not available on this machine")
+
+    logging.info("Model will be exported on device: %s" % device)
 
     if args.from_repo:
         fill_args_from_repo(args.from_repo, args)
@@ -109,7 +117,7 @@ General usage (examples):
 
     model = exp.get_model()
     model.eval()
-    model.head.decode_in_inference = True
+    model.head.decode_in_inference = False
 
     if args.weights:
         logging.info("Load weights from %s" % args.weights)
@@ -117,11 +125,11 @@ General usage (examples):
         def load_yolox_weights():
             try:
                 # state_dict
-                weights = torch.load(args.weights)["model"]
+                weights = torch.load(args.weights, map_location = device)["model"]
             except:
                 # torchscript
                 logging.info("Detected torchscript weights")
-                weights = torch.jit.load(args.weights).state_dict()
+                weights = torch.jit.load(args.weights, map_location = device).state_dict()
                 weights = {k[6:]: w for k, w in weights.items()}  # skip "model." prefix
 
             model.load_state_dict(weights, strict=True)
@@ -129,7 +137,7 @@ General usage (examples):
         try:
             load_yolox_weights()
         except:
-            # Legacy model
+            # Legacy model with background class (one more class)
             exp.num_classes = args.num_classes
 
             exp.model = None
@@ -149,7 +157,6 @@ General usage (examples):
         model.load_state_dict(weights, strict=False)
 
     logging.info("Model Summary: {}".format(get_model_info(model, exp.test_size)))
-
     filename = os.path.join(args.output_dir, args.model)
 
     if args.to_onnx:
@@ -178,6 +185,21 @@ General usage (examples):
             output_names=["detection_out", "keep_count"],
             dynamic_axes=dynamic_axes,
         )
+    elif args.trace:
+        model = replace_module(model, nn.SiLU, SiLU)
+
+        model = YoloXWrapper_TRT(
+            model, topk=args.top_k, raw_output=False, keep_count=False
+        )
+        model.to(device)
+        model.eval()
+
+        filename += "_cls" + str(args.num_classes) + "_trace.pt"
+        example = get_image_input(args.batch_size, args.img_width, args.img_height)
+        script_module = torch.jit.trace(model, example.to(device))
+        print(script_module(example.to(device)))
+        logging.info("Save traced model at %s" % filename)
+        script_module.save(filename)
     else:
         # wrap model
         model = YoloXWrapper(model, exp.num_classes, postprocess)
@@ -288,11 +310,15 @@ class YoloXWrapper(torch.nn.Module):
 
 
 class YoloXWrapper_TRT(torch.nn.Module):
-    def __init__(self, model, topk=200, raw_output=False):
+    def __init__(self, model, topk=200, raw_output=False, keep_count=False):
+        """
+        keep_count: include keep_count in return value (for compatibility with TRT)
+        """
         super(YoloXWrapper_TRT, self).__init__()
         self.model = model
         self.topk = topk
         self.raw_output = raw_output
+        self.keep_count = keep_count
 
     def to_xyxy(self, boxes):
         xyxy_boxes = boxes.new_zeros(boxes.shape)
@@ -307,7 +333,10 @@ class YoloXWrapper_TRT(torch.nn.Module):
         output = self.model(x)[0]
 
         if self.raw_output:
-            return output, torch.zeros(output.shape[0])
+            if self.keep_count:
+                return output, torch.zeros(output.shape[0])
+            else:
+                return output
 
         box_count = output.shape[1]
         cls_scores, cls_pred = output[:, :, 5:].max(dim=2, keepdim=True)
@@ -339,8 +368,11 @@ class YoloXWrapper_TRT(torch.nn.Module):
         output[:, 5] /= x.shape[2] - 1
         output[:, 6] /= x.shape[3] - 1
 
-        # detection_out, keep_count
-        return output, output[:, 0]
+        if self.keep_count:
+            # detection_out, keep_count
+            return output, output[:, 0]
+        else:
+            return output
 
 
 from PIL import Image

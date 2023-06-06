@@ -338,6 +338,7 @@ namespace dd
           }
         else
           {
+              std::cout  << "Performing forward" << std::endl;
             auto output = _traced->forward(source);
             source = torch_utils::unwrap_c10_vector(output);
           }
@@ -350,6 +351,9 @@ namespace dd
         return source.at(_loss_id);
       }
 
+    std::cout << "linear_in: " << _linear_in << std::endl;
+    // TODO hardcode
+    _linear_in = 0;
     c10::IValue out_val = source.at(_linear_in);
 
     if (_hidden_states)

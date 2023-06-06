@@ -1621,6 +1621,7 @@ namespace dd
             if (bbox)
               {
                 // Supporting only torchvision output format at the moment.
+              std::cout <<"The detection output is: " << torch_utils::to_tensor_safe(out_ivalue) << std::endl;
                 auto out_dicts = out_ivalue.toList();
 
                 for (size_t i = 0; i < out_dicts.size(); ++i)
