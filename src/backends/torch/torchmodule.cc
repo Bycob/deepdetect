@@ -173,8 +173,19 @@ namespace dd
     _logger->info("loading " + model._traced);
     try
       {
-        _traced = std::make_shared<torch::jit::script::Module>(
-            torch::jit::load(model._traced, _device));
+#ifdef USE_MPS
+          // XXX(louisj): this is a workaround for torch v2.0.1, subsequent versions should have this fixed
+          if (_device.type() == torch::DeviceType::MPS) {
+              std::cout << "LOADING en MPS" << std::endl;
+            _traced = std::make_shared<torch::jit::script::Module>(torch::jit::load(model._traced, torch::Device(torch::DeviceType::CPU)));
+            _traced->to(torch::Device(torch::DeviceType::MPS));
+          }
+          else 
+#endif
+          {
+            _traced = std::make_shared<torch::jit::script::Module>(
+                torch::jit::load(model._traced, _device));
+          }
       }
     catch (std::exception &e)
       {
