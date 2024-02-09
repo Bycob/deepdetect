@@ -515,6 +515,18 @@ namespace dd
     cdata.add_action_data(_action_id, action_out);
   }
 
+  void ImgsBboxToMaskAction::apply(oatpp::Object<DTO::PredictBody> &model_out,
+                                   ChainData &cdata)
+  {
+    // Need:
+    // - taille d'image après crop,
+    // - bbox -> conversion de la bbox globale vers la bbox dans le crop
+    oatpp::Object<DTO::PredictBody> first_model = cdata.get_model_data("0");
+    ChainInputData &input_data = first_model->_chain_input;
+    (void)input_data;
+    (void)model_out;
+  }
+
   cv::Scalar bbox_palette[]
       = { { 82, 188, 227 }, { 196, 110, 49 }, { 39, 54, 227 },
           { 68, 227, 81 },  { 77, 157, 255 }, { 255, 112, 207 },
