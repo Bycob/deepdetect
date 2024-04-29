@@ -45,6 +45,24 @@ namespace dd
       DTO_FIELD(Int32, test_batch_size) = 1;
     };
 
+    // Torch JIT compiler
+    class JitCompilerParameters : public oatpp::DTO
+    {
+      DTO_INIT(JitCompilerParameters, DTO)
+
+      DTO_FIELD_INFO(fusion_static)
+      {
+        info->description = "";
+      }
+      DTO_FIELD(Int32, fusion_static) = 2;
+
+      DTO_FIELD_INFO(fusion_dynamic)
+      {
+        info->description = "param2";
+      }
+      DTO_FIELD(Int32, fusion_dynamic) = 10;
+    };
+
     class MLLib : public oatpp::DTO
     {
       DTO_INIT(MLLib, DTO /* extends */)
@@ -190,6 +208,16 @@ namespace dd
         info->description = "Enable/disable concurrent predict for the model";
       }
       DTO_FIELD(Boolean, concurrent_predict) = true;
+
+      DTO_FIELD_INFO(jit_compiler_params)
+      {
+        info->description
+            = "[experimental] Modify torch jit compiler parameters. This can "
+              "be useful when the model takes too long to compile, for "
+              "example. Beware, this parameter applies instantly for all dede "
+              "services.";
+      }
+      DTO_FIELD(Object<JitCompilerParameters>, jit_compiler_params);
 
       // Libtorch predict options
       DTO_FIELD_INFO(forward_method)
